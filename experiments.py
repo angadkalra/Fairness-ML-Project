@@ -247,9 +247,8 @@ w_constr[K*D:(K*D + K)] = [(0,1)]*K
 from scipy.optimize import minimize
 
 results = []
-def min_lossfunc(hp):
-    az, ax, ay = hp
-    v = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', bounds=w_constr, options={'disp': True}).x
+def min_lossfunc(az,ax,ay):
+    v = minimize(loss_fn, v_0, args=(az,ax,ay), method='TNC', bounds=w_constr).x
 
     y_pred_prob = predict(v, X_valid, K)
     err = 1 - accuracy(y_valid, y_pred_prob, X_valid)
@@ -268,9 +267,11 @@ pool = mp.Pool(mp.cpu_count())
 from itertools import permutations
 perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
 
-results = [pool.apply(min_lossfunc, args=(p)) for p in perm]
+for p in perm:
+    pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
 
 pool.close()
+pool.join()
 
 results = np.array(results)
 results.tofile('opt_results', sep='\n')
