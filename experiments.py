@@ -1,9 +1,9 @@
 import os, sys
 import numpy as np
-import pandas as pd 
+import pandas as pd
 from sklearn.metrics import roc_auc_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.preprocessing import MinMaxScaler
-import multiprocessing as mp 
+import multiprocessing as mp
 
 # Read dataframe
 dataset = pd.read_csv('data/modified_heart_df').drop(columns='Unnamed: 0')
@@ -18,8 +18,6 @@ test_df = dataset.iloc[int(np.floor(0.7*dataset.shape[0])):, :]
 sex_male_idx = list(train_df.drop(columns='target').columns).index('sex_male')
 
 ## Fairness Evaluation Functions
-
-from sklearn.neighbors import KNeighborsClassifier
 
 # Demographic Parity
 def demo_parity(model, X_test, y_test):
@@ -41,7 +39,6 @@ def demo_parity(model, X_test, y_test):
     pos_prob_ratio = min(prob_female_pos/prob_male_pos, prob_male_pos/prob_female_pos)
     
     print("Positive Prob. Ratio: %f"%(pos_prob_ratio))
-    
 
 # Equalized Odds
 def equal_odds(model, X_test, y_test):
@@ -59,7 +56,6 @@ def equal_odds(model, X_test, y_test):
     print("Prob. of heart disease given male w/ Y=1: %f, Prob. of heart disease given female w/ Y=1: %f"
               %(prob_male_pos, prob_female_pos))
     
-
 # Predictive Parity
 def pred_parity(model, X_test, y_test):
     pass
@@ -86,6 +82,7 @@ def accuracy(y_true, y_pred_prob, X):
     y_pred = (y_pred_prob > 0.5)
     return (1 - 1/X.shape[0]*np.sum(np.abs(y_pred-y_true)))
 
+from sklearn.neighbors import KNeighborsClassifier
 # Consistency
 def consistency(X_test, y_test, model=None, v=np.array([]), K=0):
     
@@ -140,12 +137,19 @@ def dist_func(x, v, alpha):
     return np.sqrt(np.sum(((x-v)**2)*alpha))
     
 # M_nk = P(Z=k|x), for all n,k. 
+def softmax_helper(x, alpha, v):
+    return np.exp( -1*dist_func(x, v, alpha) )
+
 def softmax(x, k, alpha, Z):
-    denom = 0
-    for j in range(Z.shape[0]):
-        denom += np.exp( -1*dist_func(x, Z[j,:], alpha) )
+    res = [pool.apply_async(softmax_helper, args=(x, alpha, Z[j,:])) for j in range(Z.shape[0])]
+    denom = np.array([r.get() for r in res]).sum()
+    assert denom > 0
     
-    return np.exp( -1*dist_func(x, Z[k,:], alpha) )/denom
+    # denom = 0
+    # for j in range(Z.shape[0]):
+    #     denom += np.exp(-1*dist_func(x, Z[j,:], alpha))
+
+    return np.exp(-1*dist_func(x, Z[k,:], alpha))/denom
 
 # M_k^+
 def M_pos(k, alpha, Z):
@@ -165,6 +169,7 @@ def M_neg(k, alpha, Z):
     
     return (1/X_0_neg.shape[0])*exp_value
 
+# LFR Predict 
 def predict(v, X, K):
     _,D = X.shape
     
@@ -241,6 +246,7 @@ def loss_fn(v, Az, Ax, Ay):
     
     return (Az*L_z + Ax*L_x + Ay*L_y)
 
+# Bound w to be probabilities
 w_constr = [(None,None)]*v_0.shape[0]
 w_constr[K*D:(K*D + K)] = [(0,1)]*K 
 
@@ -248,7 +254,8 @@ from scipy.optimize import minimize
 
 results = []
 def min_lossfunc(az,ax,ay):
-    v = minimize(loss_fn, v_0, args=(az,ax,ay), method='TNC', bounds=w_constr).x
+    v = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', 
+                options={'maxiter': 2, 'disp': True}, bounds=w_constr).x
 
     y_pred_prob = predict(v, X_valid, K)
     err = 1 - accuracy(y_valid, y_pred_prob, X_valid)
@@ -261,9 +268,6 @@ def collect_result(res):
     global results
     results.append(res)
 
-
-pool = mp.Pool(mp.cpu_count())
-
 from itertools import permutations
 perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
 
@@ -274,7 +278,13 @@ pool.close()
 pool.join()
 
 results = np.array(results)
-results.tofile('opt_results', sep='\n')
+np.savetxt('opt_results_backup', results, delimiter=',', newline='\n')
+with open('opt_results', 'w') as f:
+    for i in range(results.shape[0]):
+        f.write(" ".join([str(v) for v in results[i,:]]))
 
 
-
+# pool = mp.Pool(mp.cpu_count())
+# res = min_lossfunc(1,1,1)
+# pool.close()
+# pool.join()
