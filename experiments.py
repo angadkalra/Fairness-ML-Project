@@ -20,47 +20,6 @@ sex_male_idx = list(train_df.drop(columns='target').columns).index('sex_male')
 
 ### Fairness Evaluation Functions
 
-# Demographic Parity
-def demo_parity(model, X_test, y_test):
-    X_test_male = X_test[X_test.sex_male == 1]
-    X_test_female = X_test[X_test.sex_male == 0]
-    
-    y_pred_male = model.predict_proba(X_test_male)
-    y_pred_female = model.predict_proba(X_test_female)
-    
-    prob_male_pos = np.sum(y_pred_male[:,1])/y_pred_male.shape[0]
-    prob_male_neg = 1 - prob_male_pos
-    
-    prob_female_pos = np.sum(y_pred_female[:,1])/y_pred_female.shape[0]
-    prob_female_neg = 1 - prob_female_pos
-    
-    print("Prob. of heart disease given male: %f, Prob. of heart disease given female: %f" %
-          (prob_male_pos, prob_female_pos))
-    
-    pos_prob_ratio = min(prob_female_pos/prob_male_pos, prob_male_pos/prob_female_pos)
-    
-    print("Positive Prob. Ratio: %f"%(pos_prob_ratio))
-
-# Equalized Odds
-def equal_odds(model, X_test, y_test):
-    X_test_pos = X_test[y_test == 1]
-
-    X_test_male_pos = X_test_pos[X_test_pos.sex_male == 1]
-    X_test_female_pos = X_test_pos[X_test_pos.sex_male == 0]
-    
-    y_pred_male = model.predict(X_test_male_pos)
-    y_pred_female = model.predict(X_test_female_pos)
-    
-    prob_male_pos = np.sum(y_pred_male)/y_pred_male.shape[0]
-    prob_female_pos = np.sum(y_pred_female)/y_pred_female.shape[0]
-    
-    print("Prob. of heart disease given male w/ Y=1: %f, Prob. of heart disease given female w/ Y=1: %f"
-              %(prob_male_pos, prob_female_pos))
-    
-# Predictive Parity
-def pred_parity(model, X_test, y_test):
-    pass
-
 # Discrimination
 def discrim(X_test, model=None, v=np.array([]), K=0):
     X_test_male = X_test[X_test[:,sex_male_idx] == 1]
@@ -99,10 +58,10 @@ def consistency(X_test, y_test, model=None, v=np.array([]), K=0):
     consist_score = 0
     for i in range(X_test.shape[0]):
         nn_sum = 0
-        for j in nn[idx][1:]:
+        for j in nn[i][1:]:
             nn_sum += y_pred[j]
             
-        consist_score += np.abs(y_pred[idx] - nn_sum)
+        consist_score += np.abs(y_pred[i] - nn_sum)
     
     return (1 - 1/(y_pred.shape[0]*k)*consist_score)
 
@@ -261,9 +220,10 @@ def min_lossfunc(az,ax,ay):
     y_pred_prob = predict(v, X_valid, K)
     err = 1 - accuracy(y_valid, y_pred_prob, X_valid)
     discr = discrim(X_valid, v=v, K=K)
+    max_delta = 1 - err - discr
     consis = consistency(X_valid, y_valid, v=v, K=K)
 
-    return [az, ax, ay, err, discr, consis]
+    return [az, ax, ay, err, discr, max_delta, consis]
 
 def collect_result(res):
     global results
@@ -286,7 +246,7 @@ if __name__ == '__main__':
     pool.join()
 
     results = np.array(results)
-    np.savetxt('opt_results', results, fmt='%d, %d, %d, %0.3f, %0.3f, %0.3f', newline='\n')
+    np.savetxt('opt_results', results, fmt='%d, %d, %d, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
     # with open('opt_results', 'w') as f:
     #     for i in range(results.shape[0]):
     #         f.write(" ".join([str(v) for v in results[i,:]]) + '\n')
