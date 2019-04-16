@@ -15,9 +15,10 @@ dataset = dataset.sample(frac=1).reset_index(drop=True)
 train_df = dataset.iloc[:int(np.floor(0.7*dataset.shape[0])),:]
 test_df = dataset.iloc[int(np.floor(0.7*dataset.shape[0])):, :]
 
+# Get gender column index
 sex_male_idx = list(train_df.drop(columns='target').columns).index('sex_male')
 
-## Fairness Evaluation Functions
+### Fairness Evaluation Functions
 
 # Demographic Parity
 def demo_parity(model, X_test, y_test):
@@ -108,24 +109,28 @@ def consistency(X_test, y_test, model=None, v=np.array([]), K=0):
 
 ### LFR 
 
+# training set
 X_0 = train_df.drop(columns='target').values
 y_0 = train_df.target.values
-
-X_0_pos = X_0[y_0 == 1]
-X_0_neg = X_0[y_0 == 0]
 
 X_test = test_df.drop(columns='target').values
 y_test = test_df.target.values
 
+# Standardize train/test sets
 mmscaler = MinMaxScaler().fit(X_0) 
 X_0 = mmscaler.transform(X_0)
 X_test = mmscaler.transform(X_test)
 
+# validation and train sets
 X_valid = X_0[:40,:]
 y_valid = y_0[:40]
 
 X_0 = X_0[40:,:]
 y_0 = y_0[40:]
+
+# training set with and without sensitive attr. == 1
+X_0_pos = X_0[X_0[:,sex_male_idx] == 1]
+X_0_neg = X_0[X_0[:,sex_male_idx] == 0]
 
 N,D = X_0.shape
 
@@ -264,28 +269,26 @@ def collect_result(res):
     global results
     results.append(res)
 
-# Parallel execution
+# All HP combinations
 from itertools import permutations
 perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
 
-results = np.array(results)
-
 if __name__ == '__main__':
+    pool = mp.Pool(mp.cpu_count())
     # for p in perm:
     #     pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
-    pool = mp.Pool(mp.cpu_count())
     pool.apply_async(min_lossfunc, args=((1,1,1)), callback=collect_result)
     pool.apply_async(min_lossfunc, args=((0.1,1,10)), callback=collect_result)
     pool.apply_async(min_lossfunc, args=((10,1,0.1)), callback=collect_result)
     pool.apply_async(min_lossfunc, args=((0.1,10,1)), callback=collect_result)
     pool.apply_async(min_lossfunc, args=((1,10,0.1)), callback=collect_result)
-
-    np.savetxt('opt_results_backup', results, delimiter=',', newline='\n')
-    with open('opt_results', 'w') as f:
-        for i in range(results.shape[0]):
-            f.write(" ".join([str(v) for v in results[i,:]]))
-
     pool.close()
     pool.join()
+
+    results = np.array(results)
+    np.savetxt('opt_results', results, fmt='%d, %d, %d, %0.3f, %0.3f, %0.3f', newline='\n')
+    # with open('opt_results', 'w') as f:
+    #     for i in range(results.shape[0]):
+    #         f.write(" ".join([str(v) for v in results[i,:]]) + '\n')
 
     
