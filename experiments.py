@@ -4,7 +4,6 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.preprocessing import MinMaxScaler
 import multiprocessing as mp
-pool = mp.Pool(mp.cpu_count())
 
 # Read dataframe
 dataset = pd.read_csv('data/modified_heart_df').drop(columns='Unnamed: 0')
@@ -252,7 +251,7 @@ from scipy.optimize import minimize
 results = []
 def min_lossfunc(az,ax,ay):
     v = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', 
-                options={'maxiter': 1, 'disp': True}, bounds=w_constr).x
+                options={'maxiter': 20, 'disp': True}, bounds=w_constr).x
 
     y_pred_prob = predict(v, X_valid, K)
     err = 1 - accuracy(y_valid, y_pred_prob, X_valid)
@@ -269,25 +268,24 @@ def collect_result(res):
 from itertools import permutations
 perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
 
-# for p in perm:
-#     pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
-
-# pool.close()
-# pool.join()
-
 results = np.array(results)
-np.savetxt('opt_results_backup', results, delimiter=',', newline='\n')
-with open('opt_results', 'w') as f:
-    for i in range(results.shape[0]):
-        f.write(" ".join([str(v) for v in results[i,:]]))
-
-
 
 if __name__ == '__main__':
-    for p in perm:
-        print(p)
-        pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
+    # for p in perm:
+    #     pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
+    pool = mp.Pool(mp.cpu_count())
+    pool.apply_async(min_lossfunc, args=((1,1,1)), callback=collect_result)
+    pool.apply_async(min_lossfunc, args=((0.1,1,10)), callback=collect_result)
+    pool.apply_async(min_lossfunc, args=((10,1,0.1)), callback=collect_result)
+    pool.apply_async(min_lossfunc, args=((0.1,10,1)), callback=collect_result)
+    pool.apply_async(min_lossfunc, args=((1,10,0.1)), callback=collect_result)
+
+    np.savetxt('opt_results_backup', results, delimiter=',', newline='\n')
+    with open('opt_results', 'w') as f:
+        for i in range(results.shape[0]):
+            f.write(" ".join([str(v) for v in results[i,:]]))
 
     pool.close()
     pool.join()
 
+    
