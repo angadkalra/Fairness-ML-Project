@@ -21,16 +21,12 @@ sex_male_idx = list(train_df.drop(columns='target').columns).index('sex_male')
 ### Fairness Evaluation Functions
 
 # Discrimination
-def discrim(X_test, model=None, v=np.array([]), K=0):
+def discrim(X_test, v, K):
     X_test_male = X_test[X_test[:,sex_male_idx] == 1]
     X_test_fem = X_test[X_test[:,sex_male_idx] == 0]
     
-    if v.shape[0] > 0 and K:
-        y_pred_male = predict(v, X_test_male, K)
-        y_pred_fem = predict(v, X_test_fem, K)
-    else:
-        y_pred_male = model.predict(X_test_male)
-        y_pred_fem = model.predict(X_test_fem)
+    y_pred_male = predict(v, X_test_male, K)
+    y_pred_fem = predict(v, X_test_fem, K)
     
     discrim = y_pred_male.sum()/y_pred_male.shape[0] - y_pred_fem.sum()/y_pred_fem.shape[0]
     discrim = np.abs(discrim)
@@ -44,12 +40,9 @@ def accuracy(y_true, y_pred_prob, X):
 
 from sklearn.neighbors import KNeighborsClassifier
 # Consistency
-def consistency(X_test, y_test, model=None, v=np.array([]), K=0):
+def consistency(X_test, v, K):
     
-    if v.shape[0] > 0 and K:
-        y_pred = predict(v, X_test, K) > 0.5
-    else:
-        y_pred = model.predict(X_test)
+    y_pred = predict(v, X_test, K) > 0.5
     
     k = 5
     knn_model = KNeighborsClassifier().fit(X_test, y_test)
@@ -101,9 +94,6 @@ def dist_func(x, v, alpha):
     return np.sqrt(np.sum(((x-v)**2)*alpha))
     
 # M_nk = P(Z=k|x), for all n,k. 
-def softmax_helper(x, alpha, v):
-    return np.exp( -1*dist_func(x, v, alpha) )
-
 def softmax(x, k, alpha, Z):
     denom = 0
     for j in range(Z.shape[0]):
@@ -215,15 +205,15 @@ from scipy.optimize import minimize
 results = []
 def min_lossfunc(az,ax,ay):
     v = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', 
-                options={'maxiter': 20, 'disp': True}, bounds=w_constr).x
+                options={'maxiter': 30, 'disp': True}, bounds=w_constr).x
 
     y_pred_prob = predict(v, X_valid, K)
-    err = 1 - accuracy(y_valid, y_pred_prob, X_valid)
-    discr = discrim(X_valid, v=v, K=K)
-    max_delta = 1 - err - discr
-    consis = consistency(X_valid, y_valid, v=v, K=K)
+    acc = accuracy(y_valid, y_pred_prob, X_valid)
+    discr = discrim(X_valid, v, K)
+    max_delta = acc - discr
+    consis = consistency(X_valid, v, K)
 
-    return [az, ax, ay, err, discr, max_delta, consis]
+    return [az, ax, ay, acc, discr, max_delta, consis]
 
 def collect_result(res):
     global results
@@ -233,22 +223,27 @@ def collect_result(res):
 from itertools import permutations
 perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
 
-if __name__ == '__main__':
-    pool = mp.Pool(mp.cpu_count())
-    # for p in perm:
-    #     pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
-    pool.apply_async(min_lossfunc, args=((1,1,1)), callback=collect_result)
-    pool.apply_async(min_lossfunc, args=((0.1,1,10)), callback=collect_result)
-    pool.apply_async(min_lossfunc, args=((10,1,0.1)), callback=collect_result)
-    pool.apply_async(min_lossfunc, args=((0.1,10,1)), callback=collect_result)
-    pool.apply_async(min_lossfunc, args=((1,10,0.1)), callback=collect_result)
+def train_lfr(pool):
+    for p in perm:
+        pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
+    # pool.apply_async(min_lossfunc, args=((1,1,1)), callback=collect_result)
+    # pool.apply_async(min_lossfunc, args=((0.1,1,10)), callback=collect_result)
+    # pool.apply_async(min_lossfunc, args=((10,1,0.1)), callback=collect_result)
+    # pool.apply_async(min_lossfunc, args=((0.1,10,1)), callback=collect_result)
+    # pool.apply_async(min_lossfunc, args=((1,10,0.1)), callback=collect_result)
     pool.close()
     pool.join()
 
     results = np.array(results)
-    np.savetxt('opt_results', results, fmt='%d, %d, %d, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
-    # with open('opt_results', 'w') as f:
-    #     for i in range(results.shape[0]):
-    #         f.write(" ".join([str(v) for v in results[i,:]]) + '\n')
+    np.savetxt('train_results_all', results, fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
+
+def predict_lfr(pool):
+    pass
+
+if __name__ == '__main__':
+    pool = mp.Pool(mp.cpu_count())
+    train_lfr(pool)
+    # lfr_predict(pool)
+    
 
     
