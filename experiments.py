@@ -38,8 +38,8 @@ def accuracy(y_true, y_pred_prob, X):
     y_pred = (y_pred_prob > 0.5)
     return (1 - 1/X.shape[0]*np.sum(np.abs(y_pred-y_true)))
 
-from sklearn.neighbors import KNeighborsClassifier
 # Consistency
+from sklearn.neighbors import KNeighborsClassifier
 def consistency(X_test, v, K):
     
     y_pred = predict(v, X_test, K) > 0.5
@@ -58,7 +58,6 @@ def consistency(X_test, v, K):
     
     return (1 - 1/(y_pred.shape[0]*k)*consist_score)
 
-
 ### LFR 
 
 # training set
@@ -74,11 +73,11 @@ X_0 = mmscaler.transform(X_0)
 X_test = mmscaler.transform(X_test)
 
 # validation and train sets
-X_valid = X_0[:40,:]
-y_valid = y_0[:40]
+# X_valid = X_0[:40,:]
+# y_valid = y_0[:40]
 
-X_0 = X_0[40:,:]
-y_0 = y_0[40:]
+# X_0 = X_0[40:,:]
+# y_0 = y_0[40:]
 
 # training set with and without sensitive attr. == 1
 X_0_pos = X_0[X_0[:,sex_male_idx] == 1]
@@ -237,13 +236,24 @@ def train_lfr(pool):
     results = np.array(results)
     np.savetxt('train_results_all', results, fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
-def predict_lfr(pool):
-    pass
+def lfr_predict(opt_hp):
+    # retrain on full training set, predict on test set, output metrics
+    v_opt = minimize(loss_fn, v_0, args=opt_hp, method='L-BFGS-B', 
+                options={'maxiter': 30, 'disp': True}, bounds=w_constr).x
+
+    y_pred_prob = predict(v, X_test, K)
+    acc = accuracy(y_test, y_pred_prob, X_test)
+    discr = discrim(X_test, v, K)
+    max_delta = acc - discr
+    consis = consistency(X_test, v, K)
+
+    test_res = np.array([acc, discr, max_delta, consis])
+    np.savetxt("test_results_all", test_res, fmt='%0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
 if __name__ == '__main__':
-    pool = mp.Pool(mp.cpu_count())
-    train_lfr(pool)
-    # lfr_predict(pool)
+    # pool = mp.Pool(mp.cpu_count())
+    # train_lfr(pool)
+    lfr_predict((10, 1, 0.1))
     
 
     
