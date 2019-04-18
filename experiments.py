@@ -41,16 +41,16 @@ def accuracy(y_true, y_pred_prob, X):
 
 # Consistency
 from sklearn.neighbors import KNeighborsClassifier
-def consistency(X_test, v, K):
+def consistency(X, y, v, K):
     
-    y_pred = predict(v, X_test, K) > 0.5
+    y_pred = predict(v, X, K) > 0.5
     
     k = 5
-    knn_model = KNeighborsClassifier().fit(X_test, y_test)
-    nn = knn_model.kneighbors(X_test, k, False)
+    knn_model = KNeighborsClassifier().fit(X, y)
+    nn = knn_model.kneighbors(X, k, False)
     
     consist_score = 0
-    for i in range(X_test.shape[0]):
+    for i in range(X.shape[0]):
         nn_sum = 0
         for j in nn[i][1:]:
             nn_sum += y_pred[j]
@@ -205,13 +205,13 @@ from scipy.optimize import minimize
 results = []
 def min_lossfunc(az,ax,ay):
     v = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', 
-                options={'maxiter': 30, 'disp': True}, bounds=w_constr).x
+                options={'maxiter': 0, 'disp': True}, bounds=w_constr).x
 
     y_pred_prob = predict(v, X_valid, K)
     acc = accuracy(y_valid, y_pred_prob, X_valid)
     discr = discrim(X_valid, v, K)
     max_delta = acc - discr
-    consis = consistency(X_valid, v, K)
+    consis = consistency(X_valid, y_valid, v, K)
 
     return [az, ax, ay, acc, discr, max_delta, consis]
 
@@ -219,10 +219,14 @@ def collect_result(res):
     global results
     results.append(res)
 
+def collect_err(e)
+    print(e)
+
 def train_lfr(pool):
     perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
     for p in perm:
-        pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
+        pool.apply_async(min_lossfunc, args=(p), callback=collect_result, 
+                        error_callback=collect_err)
     pool.close()
     pool.join()
 
@@ -230,8 +234,8 @@ def train_lfr(pool):
     res = np.array(results)
     np.savetxt('train_results_all', res, fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
-def lfr_predict(opt_hp):
-    # retrain on full training set, predict on test set, output metrics
+# Retrain on full training set, predict on test set, output metrics
+def test_lfr(opt_hp):
     v_opt = minimize(loss_fn, v_0, args=opt_hp, method='L-BFGS-B', 
                 options={'maxiter': 30, 'disp': True}, bounds=w_constr).x
 
@@ -239,7 +243,7 @@ def lfr_predict(opt_hp):
     acc = accuracy(y_test, y_pred_prob, X_test)
     discr = discrim(X_test, v_opt, K)
     max_delta = acc - discr
-    consis = consistency(X_test, v_opt, K)
+    consis = consistency(X_test, y_test, v_opt, K)
 
     test_res = np.array([acc, discr, max_delta, consis])
     np.savetxt("test_results_all", test_res, fmt='%0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
@@ -247,7 +251,6 @@ def lfr_predict(opt_hp):
 if __name__ == '__main__':
     pool = mp.Pool(mp.cpu_count())
     train_lfr(pool)
-    # lfr_predict((10, 1, 0.1))
     
 
     
