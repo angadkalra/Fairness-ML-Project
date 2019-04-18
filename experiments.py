@@ -4,6 +4,7 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score, confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.preprocessing import MinMaxScaler
 import multiprocessing as mp
+from itertools import permutations
 
 # Read dataframe
 dataset = pd.read_csv('data/modified_heart_df').drop(columns='Unnamed: 0')
@@ -73,11 +74,11 @@ X_0 = mmscaler.transform(X_0)
 X_test = mmscaler.transform(X_test)
 
 # validation and train sets
-# X_valid = X_0[:40,:]
-# y_valid = y_0[:40]
+X_valid = X_0[:40,:]
+y_valid = y_0[:40]
 
-# X_0 = X_0[40:,:]
-# y_0 = y_0[40:]
+X_0 = X_0[40:,:]
+y_0 = y_0[40:]
 
 # training set with and without sensitive attr. == 1
 X_0_pos = X_0[X_0[:,sex_male_idx] == 1]
@@ -218,42 +219,35 @@ def collect_result(res):
     global results
     results.append(res)
 
-# All HP combinations
-from itertools import permutations
-perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
-
 def train_lfr(pool):
+    perm = list(permutations([0.1, 0.5, 1, 5, 10], 3))
     for p in perm:
         pool.apply_async(min_lossfunc, args=(p), callback=collect_result)
-    # pool.apply_async(min_lossfunc, args=((1,1,1)), callback=collect_result)
-    # pool.apply_async(min_lossfunc, args=((0.1,1,10)), callback=collect_result)
-    # pool.apply_async(min_lossfunc, args=((10,1,0.1)), callback=collect_result)
-    # pool.apply_async(min_lossfunc, args=((0.1,10,1)), callback=collect_result)
-    # pool.apply_async(min_lossfunc, args=((1,10,0.1)), callback=collect_result)
     pool.close()
     pool.join()
 
-    results = np.array(results)
-    np.savetxt('train_results_all', results, fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
+    global results
+    res = np.array(results)
+    np.savetxt('train_results_all', res, fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
 def lfr_predict(opt_hp):
     # retrain on full training set, predict on test set, output metrics
     v_opt = minimize(loss_fn, v_0, args=opt_hp, method='L-BFGS-B', 
                 options={'maxiter': 30, 'disp': True}, bounds=w_constr).x
 
-    y_pred_prob = predict(v, X_test, K)
+    y_pred_prob = predict(v_opt, X_test, K)
     acc = accuracy(y_test, y_pred_prob, X_test)
-    discr = discrim(X_test, v, K)
+    discr = discrim(X_test, v_opt, K)
     max_delta = acc - discr
-    consis = consistency(X_test, v, K)
+    consis = consistency(X_test, v_opt, K)
 
     test_res = np.array([acc, discr, max_delta, consis])
     np.savetxt("test_results_all", test_res, fmt='%0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
 if __name__ == '__main__':
-    # pool = mp.Pool(mp.cpu_count())
-    # train_lfr(pool)
-    lfr_predict((10, 1, 0.1))
+    pool = mp.Pool(mp.cpu_count())
+    train_lfr(pool)
+    # lfr_predict((10, 1, 0.1))
     
 
     
