@@ -205,7 +205,7 @@ from scipy.optimize import minimize
 results = []
 def min_lossfunc(az,ax,ay):
     v = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', 
-                options={'maxiter': 0, 'disp': True}, bounds=w_constr).x
+                options={'maxiter': 20, 'disp': True}, bounds=w_constr).x
 
     y_pred_prob = predict(v, X_valid, K)
     acc = accuracy(y_valid, y_pred_prob, X_valid)
@@ -219,7 +219,7 @@ def collect_result(res):
     global results
     results.append(res)
 
-def collect_err(e)
+def collect_err(e):
     print(e)
 
 def train_lfr(pool):
@@ -235,22 +235,30 @@ def train_lfr(pool):
     np.savetxt('train_results_all', res, fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
 # Retrain on full training set, predict on test set, output metrics
-def test_lfr(opt_hp):
-    v_opt = minimize(loss_fn, v_0, args=opt_hp, method='L-BFGS-B', 
-                options={'maxiter': 30, 'disp': True}, bounds=w_constr).x
+def test_lfr(az,ax,ay):
+    v_opt = minimize(loss_fn, v_0, args=(az,ax,ay), method='L-BFGS-B', 
+                options={'maxiter': 20, 'disp': True}, bounds=w_constr).x
 
     y_pred_prob = predict(v_opt, X_test, K)
     acc = accuracy(y_test, y_pred_prob, X_test)
     discr = discrim(X_test, v_opt, K)
     max_delta = acc - discr
     consis = consistency(X_test, y_test, v_opt, K)
-
-    test_res = np.array([acc, discr, max_delta, consis])
-    np.savetxt("test_results_all", test_res, fmt='%0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
+    
+    return [az, ax, ay, acc, discr, max_delta, consis]
+    # test_res = np.array([acc, discr, max_delta, consis])
+    # np.savetxt("test_results_all", test_res, fmt='%0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
 
 if __name__ == '__main__':
     pool = mp.Pool(mp.cpu_count())
-    train_lfr(pool)
-    
+    # train_lfr(pool)
+    pool.apply_async(test_lfr, args=(5,10,0.1), callback=collect_result, error_callback=collect_err)
+    pool.apply_async(test_lfr, args=(5,10,0.5), callback=collect_result, error_callback=collect_err)
+    pool.apply_async(test_lfr, args=(5,10,1), callback=collect_result, error_callback=collect_err)
+    pool.apply_async(test_lfr, args=(10,5,1), callback=collect_result, error_callback=collect_err)
+    pool.close()
+    pool.join()
 
-    
+    np.savetxt("test_results_all", np.array(results), fmt='%2.2f, %2.2f, %2.2f, %0.3f, %0.3f, %0.3f, %0.3f', newline='\n')
+
+
